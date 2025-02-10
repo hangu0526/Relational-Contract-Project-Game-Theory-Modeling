@@ -1,0 +1,134 @@
+---
+title: "Infinitely Repeated Games Analysis"
+author: "Hana Kwon"
+date: "2024-11-18"
+output: pdf_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r libraries}
+# Load necessary libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(tidyr)
+```
+
+```{r load-data}
+# Load the data
+data <- read.table("~/Columbia Dropbox/Kwon Hana/Prof. W.Bentley MacLeod & Hana Kwon/Data/Embrey_2018a_new_data.txt", 
+                   header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Inspect the data
+head(data)
+```
+
+# 1. DATA PREPARATION: PREPROCESSING
+
+```{r preprocess-data}
+# Sort the data by session, player ID, supergame, and round
+sorted_data <- data %>%
+  arrange(session, id, supergame, round)
+
+# Add opponent's cooperation variable (ocoop)
+sorted_data <- sorted_data %>%
+  left_join(
+    sorted_data %>% select(session, supergame, round, id = oid, ocoop = coop),
+    by = c("session", "supergame", "round", "id")
+  )
+
+# Add strategy variables (ACA, ADA, TFTA)
+sorted_data <- sorted_data %>%
+  mutate(
+    ACA = ifelse(coop == 1, 1, 0),
+    ADA = ifelse(coop == 0, 1, 0),
+    TFTA = ifelse(round == 1, 1, lag(ocoop))
+  )
+
+# Calculate payoff
+sorted_data <- sorted_data %>%
+  mutate(
+    payoff = case_when(
+      coop == 1 & ocoop == 1 ~ r,
+      coop == 1 & ocoop == 0 ~ s,
+      coop == 0 & ocoop == 1 ~ t,
+      coop == 0 & ocoop == 0 ~ p
+    )
+  )
+
+# Save sorted data
+save(sorted_data, file = "TFT_infinite_game_sorted_data.RData")
+```
+
+# 2. DATA ANALYSIS
+
+```{r load-sorted-data}
+# Load sorted data
+load("TFT_infinite_game_sorted_data.RData")
+```
+
+```{r collapse-data}
+collapsed_data <- sorted_data %>%
+  group_by(session, id, supergame) %>%
+  summarise(
+    mean_ACA = mean(ACA, na.rm = TRUE),
+    mean_ADA = mean(ADA, na.rm = TRUE),
+    mean_TFTA = mean(TFTA, na.rm = TRUE),
+    avg_payoff = mean(payoff, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r summary-table}
+summary_table <- collapsed_data %>%
+  summarise(
+    min_ACA = min(mean_ACA, na.rm = TRUE),
+    max_ACA = max(mean_ACA, na.rm = TRUE),
+    avg_ACA = mean(mean_ACA, na.rm = TRUE),
+    avg_payoff_ACA_1 = mean(avg_payoff[mean_ACA == 1], na.rm = TRUE),
+    min_ADA = min(mean_ADA, na.rm = TRUE),
+    max_ADA = max(mean_ADA, na.rm = TRUE),
+    avg_ADA = mean(mean_ADA, na.rm = TRUE),
+    avg_payoff_ADA_1 = mean(avg_payoff[mean_ADA == 1], na.rm = TRUE),
+    min_TFTA = min(mean_TFTA, na.rm = TRUE),
+    max_TFTA = max(mean_TFTA, na.rm = TRUE),
+    avg_TFTA = mean(mean_TFTA, na.rm = TRUE),
+    avg_payoff_TFTA_1 = mean(avg_payoff[mean_TFTA == 1], na.rm = TRUE)
+  )
+```
+
+```{r export-table, result="asis"}
+summary_table %>%
+  kbl(caption = "Summary Table of Strategies in Infinitely Repeated Game") %>%
+  kable_styling(latex_options = c("striped", "hold_position", "scale_down"))
+```
+```{r vertical-table, results="asis"}
+# Pivot the table for vertical display
+vertical_table <- summary_table %>%
+  pivot_longer(cols = everything(), names_to = "Metric", values_to = "Value")
+
+# Display the vertical table
+vertical_table %>%
+  kbl(caption = "Vertical Summary Table of Strategies in Infinitely Repeated Game") %>%
+  kable_styling(latex_options = c("striped", "hold_position", "scale_down"))
+```
+
+
+
+```{r histogram, fig.width=10, fig.height=6}
+
+library(ggplot2)
+
+# Generate histogram for average payoff
+ggplot(data = collapsed_data, aes(x = avg_payoff)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Histogram of Average Payoff",
+    x = "Average Payoff",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+```
+

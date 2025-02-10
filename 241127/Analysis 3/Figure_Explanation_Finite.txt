@@ -1,0 +1,7 @@
+Figure Explanation for Finite Games:
+This histogram compares the total payoff distributions across three strategy categories:
+1. 'Only TFT': Players who exclusively followed the Tit-for-Tat strategy throughout the game (mean_TFTA == 1).
+2. 'TFTA Consistent': Players whose behavior was largely consistent with Tit-for-Tat (0.8 <= mean_TFTA < 1).
+3. 'All Strategies': All other players, regardless of the strategies they followed.
+The x-axis represents the total payoff per game, and the y-axis shows the frequency of players achieving that payoff.
+This figure illustrates how players strictly following TFT compare to others in terms of total payoffs.

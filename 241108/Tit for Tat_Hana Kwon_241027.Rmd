@@ -1,0 +1,454 @@
+---
+title: "[Tit-for-Tat] Strategy Identification and Payoff Analysis" 
+author: "Hana Kwon"
+date: "Oct 27, 2024"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+---
+
+### Introduction
+
+This document details the approach used to identify player strategies *(Tit-for-Tat, Grim, Always Cooperate, and Always Defect)* and calculate payoffs in an experimental dataset.
+
+### Definitions and Assumptions
+
+-   **Payoff Values**
+
+    -   `r`: *(Reward)* Payoff for mutual cooperation
+    -   `s`: *(Sucker)* Payoff when one cooperates and the other defects
+    -   `t`: *(Temptation)* Payoff for defection when the other cooperates
+    -   `p`: *(Punishment)* Payoff for mutual defection
+
+-   **Strategies**
+
+    1.  **Always Cooperate**: Player cooperates in all rounds.
+    2.  **Always Defect**: Player defects in all rounds.
+    3.  **Grim**: Player starts by cooperating and defects permanently if the opponent defects.
+    4.  **Tit-for-Tat**: Player mirrors the opponent’s previous move.
+
+-   **Dataset Information**
+
+    -   `session`: Experiment session number.
+
+    -   `id`: Participant ID.
+
+    -   `oid`: Partner's ID.
+
+    -   `supergame`: Match number.
+
+    -   `round`: Round number within a supergame.
+
+    -   `horizon`: Length of supergame.
+
+    -   `coop`: Cooperation indicator (1 if cooperated, 0 otherwise).
+
+    -   `r`, `s`, `t`, `p`: Payoff values based on cooperation and defection as described above.
+
+### **Analysis Overview**
+
+-   **Core Analysis**
+
+    1.  Data Loading and Initial Exploration
+
+    2.  Data Preparation and Preprocessing
+
+    3.  Payoff Analysis
+
+        3.1 Calculate Payoff Based on Actions
+
+        3.2 Round-by-Round Average Payoff Calculation
+
+        3.3 Average Payoff and Variance by Player
+
+        3.4 Calculation and Visualization of T Value
+
+        3.5 Cross-Tabulation of T Values by Game Length
+
+    4.  Strategy Identification
+
+    5.  Strategy Payoff Analysis
+
+-   **Extended Analysis**
+
+    5.  Frequency-Weighted Payoff Calculation
+
+    6.  Performance Against Non-Fixed Strategies
+
+    7.  Expected Payoff Simulation for Hypothetical Tit-for-Tat Player
+
+    8.  Visualizations and Graphical Analysis
+
+------------------------------------------------------------------------
+
+## **Core Analysis**
+
+### Step 1: Data Loading, Initial Exploration, and Preparation
+
+-   **Objective:** Load the dataset and examine its structure to ensure successful data import and check for any missing values.
+
+```{r}
+### 1.1 Load Necessary Libraries and Dataset
+library(dplyr)
+library(readr)
+library(ggplot2)
+
+file_path <- "~/Desktop/[Tit for Tat] Prof.MacLeod_Hana Kwon/Embrey_2018a_new_data.txt"
+data <- read.table(file_path, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+### 1.2 Initial Data Exploration
+str(data)      # Check the structure of the data
+summary(data)  # Summary of data to examine distributions and any NA values
+```
+
+### **Step 2: Data Preparation and Preprocessing**
+
+-   **Objective:** Prepare player and opponent data frames to align cooperation values and payoff values for each round.
+
+```{r}
+### 2.1 Create Player and Opponent Data Frames
+df_self <- data %>%
+  select(id, oid, supergame, round, horizon, coop, r, s, t, p) %>% 
+  rename(player_id = id, opponent_id = oid, player_coop = coop)
+
+df_opp <- data %>%
+  select(id, oid, supergame, round, horizon, coop) %>%  
+  rename(opponent_id = id, player_id = oid, opponent_coop = coop)
+
+### 2.2 Merge Player and Opponent Data
+df_merged <- df_self %>%
+  left_join(df_opp, by = c("player_id", "opponent_id", "supergame", "round", "horizon"))  
+
+# Check structure of merged dataframe
+str(df_merged) 
+```
+
+### **Step 3: Descriptive Payoff Analysis**
+
+#### **3.1 Payoff Calculation Based on Actions**
+
+-   **Objective:** Calculate the payoff based on cooperation and defection combinations for each round and assign values to the `payoff` column.
+
+```{r}
+df_merged <- df_merged %>%
+  mutate(payoff = case_when(
+    player_coop == 1 & opponent_coop == 1 ~ r,  # Both Cooperate
+    player_coop == 1 & opponent_coop == 0 ~ s,  # Only Player Cooperates
+    player_coop == 0 & opponent_coop == 1 ~ t,  # Only Player Defects
+    player_coop == 0 & opponent_coop == 0 ~ p,  # Both Defect
+    TRUE ~ NA_real_                             # Default value for any unspecified cases
+  ))
+```
+
+#### 3.2 Round-by-Round Average Payoff Calculation
+
+-   **Objective:** Calculate the round-by-round average payoff for each player and visualize changes in performance over each round.
+
+```{r}
+round_avg_payoff <- df_merged %>%
+  group_by(player_id, round) %>%
+  summarize(avg_round_payoff = mean(payoff, na.rm = TRUE), .groups = "drop")
+
+print(round_avg_payoff)
+
+# Visualization: Round-by-Round Payoff Distribution for Each Player with Grouping and Color
+ggplot(round_avg_payoff, aes(x = round, y = avg_round_payoff, color = factor(player_id), group = player_id)) +
+  geom_line(alpha = 0.5) +
+  labs(title = "Round-by-Round Average Payoff for Each Player", x = "Round", y = "Average Payoff") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+#### 3.3 Average Payoff and Variance Calculation per Player
+
+-   **Objective:** Calculate the overall average payoff and payoff variance for each player to understand the distribution of player performance.
+
+```{r}
+avg_payoff_variance <- df_merged %>%
+  group_by(player_id) %>%
+  summarize(
+    avg_payoff = mean(payoff, na.rm = TRUE),
+    payoff_variance = var(payoff, na.rm = TRUE)
+  )
+
+print(avg_payoff_variance)
+
+# Visualization: Distribution of Average Payoffs
+ggplot(avg_payoff_variance, aes(x = avg_payoff)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  labs(title = "Distribution of Average Payoffs", x = "Average Payoff", y = "Count") +
+  theme_minimal()
+```
+
+#### 3.4 'T' Value Calculation and Distribution Visualization
+
+-   **Objective:** Calculate T value (the number of remaining rounds when a player first defects) and visualize the distribution of T values.
+
+```{r}
+df_merged <- df_merged %>%
+  group_by(player_id, supergame) %>%
+  mutate(
+    first_defect_round = ifelse(player_coop == 0 & !is.na(player_coop), round, NA),
+    T = ifelse(!is.na(first_defect_round), horizon - first_defect_round, ifelse(all(player_coop == 1, na.rm = TRUE), 0, NA))
+  ) %>%
+  ungroup() 
+
+print(df_merged %>% select(player_id, supergame, round, player_coop, horizon, T))
+
+# Visualization: Distribution of T Values
+ggplot(df_merged %>% filter(!is.na(T)), aes(x = T)) +
+  geom_histogram(bins = 30, fill = "green", color = "black") +
+  labs(title = "Distribution of T Values", x = "T (Remaining Periods at First Defection)", y = "Count") +
+  theme_minimal()
+```
+
+#### 3.5 Cross-Tabulation of T Values by Game Length
+
+-   **Objective:** Summarize T values by game length (horizon) to show mean and standard deviation of T for each horizon and visualize these statistics.
+
+```{r}
+T_summary <- df_merged %>%
+  group_by(horizon) %>%
+  summarise(
+    mean_T = mean(T, na.rm = TRUE),
+    sd_T = sd(T, na.rm = TRUE),
+    count = n()
+  )
+
+print(T_summary)
+
+
+### Visualization: 
+
+# Average T Value by Game Length Visualization
+ggplot(T_summary, aes(x = factor(horizon), y = mean_T, fill = factor(horizon))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average T Value by Game Length", x = "Game Length (Horizon)", y = "Average T") +
+  theme_minimal()
+
+# Standard Deviation of T Value by Game Length Visualization
+ggplot(T_summary, aes(x = factor(horizon), y = sd_T, fill = factor(horizon))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Standard Deviation of T Value by Game Length", x = "Game Length (Horizon)", y = "Standard Deviation of T") +
+  theme_minimal()
+
+```
+
+### **Step 4: Strategy Identification**
+
+-   **Objective:** Define a function to classify player strategies, and then merge the identified strategies with the main dataset and calculate the average payoff and payoff variance for each strategy.
+
+```{r}
+# Load ggplot2 library for visualization
+library(ggplot2)
+
+### 4.1 Define Strategy Identification Function
+identify_strategy <- function(player_coop, opponent_coop) {
+  # Tit for Tat
+  tit_for_tat <- if (length(player_coop) > 1) all(player_coop[-1] == lag(opponent_coop)[-1], na.rm = TRUE) else FALSE
+  # Grim Strategy
+  grim <- all((player_coop == 1) | (cumsum(opponent_coop == 0) > 0), na.rm = TRUE)
+  # Always Cooperate
+  always_cooperate <- all(player_coop == 1)
+  # Always Defect
+  always_defect <- all(player_coop == 0)
+  
+  ## Determine Strategy
+  if (tit_for_tat) return("Tit for Tat")
+  else if (grim) return("Grim")
+  else if (always_cooperate) return("Always Cooperate")
+  else if (always_defect) return("Always Defect")
+  else return("Other")
+}
+
+# Apply Strategy Identification to df_merged
+df_merged <- df_merged %>%
+  group_by(player_id, supergame) %>%
+  mutate(strategy_label = identify_strategy(player_coop, opponent_coop)) %>%
+  ungroup()
+
+# Group by strategy_label and count
+strategy_counts <- df_merged %>%
+  group_by(strategy_label) %>%
+  summarize(count = n())
+
+print(strategy_counts)
+
+#==================================================================================#
+
+# Visualize Strategy Counts
+ggplot(strategy_counts, aes(x = strategy_label, y = count, fill = strategy_label)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Strategy Counts", x = "Strategy", y = "Count") +
+  theme_minimal()
+```
+
+### **Step 5: Strategy Payoff Analysis**
+
+-   **Objective:** Merge the identified strategies with the main dataset and calculate the average payoff and payoff variance for each strategy.
+
+```{r}
+
+### 5.1 Apply Strategy Identification to Each Player and Supergame
+df_strategies <- df_merged %>%
+  group_by(player_id, supergame) %>%
+  summarise(strategy = identify_strategy(player_coop, opponent_coop), .groups = 'drop')
+
+### 5.2 Merge Identified Strategies with Original Data
+df_merged <- df_merged %>%
+  left_join(df_strategies, by = c("player_id", "supergame"))
+
+### 5.3 Calculate Average Payoff by Strategy
+strategy_payoff_summary <- df_merged %>%
+  group_by(strategy) %>%
+  summarise(
+    avg_strategy_payoff = mean(payoff, na.rm = TRUE),
+    payoff_variance = var(payoff, na.rm = TRUE),
+    count = n()
+  )
+
+# View Results
+print(strategy_payoff_summary)
+
+#==================================================================================#
+
+## Visualize Average Payoff by Strategy & Payoff Variance by Strategy
+
+# Average Payoff by Strategy
+ggplot(strategy_payoff_summary, aes(x = strategy, y = avg_strategy_payoff, fill = strategy)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Payoff by Strategy", x = "Strategy", y = "Average Payoff") +
+  theme_minimal()
+
+# Payoff Variance by Strategy
+ggplot(strategy_payoff_summary, aes(x = strategy, y = payoff_variance, fill = strategy)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Payoff Variance by Strategy", x = "Strategy", y = "Payoff Variance") +
+  theme_minimal()
+```
+
+------------------------------------------------------------------------
+
+## **Extended Analysis**
+
+### Step 6: Frequency-Weighted Payoff Calculation
+
+-   **Objective:** This calculation weights each strategy’s average payoff by its frequency, providing a clearer view of strategy effectiveness.
+
+```{r}
+
+### 6 Frequency-Weighted Average Payoff Calculation
+weighted_payoff_summary <- strategy_payoff_summary %>%
+  mutate(weighted_avg_payoff = avg_strategy_payoff * (count / sum(count)))
+
+# Print Weighted Results
+print(weighted_payoff_summary)
+
+# Visualization
+ggplot(weighted_payoff_summary, aes(x = strategy, y = weighted_avg_payoff, fill = strategy)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Frequency-Weighted Average Payoff by Strategy", x = "Strategy", y = "Weighted Average Payoff") +
+  theme_minimal()
+
+```
+
+### Step 7: Performance Against Non-Fixed Strategies
+
+-   **Objective:** This analysis compares each fixed strategy’s performance when interacting with non-fixed strategies, highlighting adaptability.
+
+```{r}
+
+### 7 Payoff Analysis Against Non-Fixed Strategies
+non_fixed_performance <- df_merged %>%
+  filter(strategy != "Always Cooperate" & strategy != "Always Defect") %>%
+  group_by(strategy) %>%
+  summarise(
+    avg_payoff_against_non_fixed = mean(payoff, na.rm = TRUE),
+    variance_against_non_fixed = var(payoff, na.rm = TRUE)
+  )
+
+# Print Non-Fixed Performance Results
+print(non_fixed_performance)
+
+# Visualization
+ggplot(non_fixed_performance, aes(x = strategy, y = avg_payoff_against_non_fixed, fill = strategy)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Payoff Against Non-Fixed Strategies", x = "Strategy", y = "Average Payoff") +
+  theme_minimal()
+```
+
+### Step 8: Expected Payoff Simulation for Hypothetical Tit-for-Tat Player
+
+-   **Objective:** In this step, we estimate the expected payoff for a hypothetical Tit-for-Tat player when competing against various other strategies. This analysis provides insights into how a Tit-for-Tat strategy might perform on average against other identified strategies.
+
+```{r}
+
+### 8 Simulating Tit-for-Tat Performance
+
+# Calculating Expected Payoff for Tit-for-Tat vs Opponent Strategies
+hypothetical_tft_performance <- df_merged %>%
+  filter(strategy == "Tit for Tat") %>%
+  group_by(opponent_strategy = strategy) %>%
+  summarise(
+    avg_expected_payoff = mean(payoff, na.rm = TRUE),
+    variance_expected_payoff = var(payoff, na.rm = TRUE),
+    count = n()
+  )
+
+# View Results as a Table
+print(hypothetical_tft_performance)
+```
+
+### **Step** 9**:** Visualizations and Graphical Analysis
+
+-   **Objective:** Provides a visualization of strategy payoff distributions and strategy counts, offering a visual comparison of each strategy’s performance and popularity.
+
+```{r}
+
+### 9 Visualizations
+
+library(ggplot2)
+library(ggridges)
+
+# 1. Bar Plot: Average Payoff by Strategy
+# This bar plot shows the average payoff for each strategy, allowing a straightforward comparison of average performance.
+ggplot(strategy_payoff_summary, aes(x = strategy, y = avg_strategy_payoff, fill = strategy)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Payoff by Strategy", x = "Strategy", y = "Average Payoff") +
+  theme_minimal()
+
+# 2. Box Plot: Payoff Distribution by Strategy
+# This box plot displays the distribution of payoffs for each strategy, highlighting median, quartiles, and potential outliers.
+ggplot(df_merged, aes(x = strategy, y = payoff, fill = strategy)) +
+  geom_boxplot() +
+  labs(title = "Payoff Distribution by Strategy", x = "Strategy", y = "Payoff") +
+  theme_minimal()
+
+# 3. Violin Plot: Density of Payoff by Strategy
+# The violin plot shows the density distribution of payoffs for each strategy, combining box plot and density plot features.
+ggplot(df_merged, aes(x = strategy, y = payoff, fill = strategy)) +
+  geom_violin() +
+  labs(title = "Density of Payoff by Strategy", x = "Strategy", y = "Payoff") +
+  theme_minimal()
+
+# 4. Density Plot: Density of Payoffs by Strategy
+# This density plot presents the probability density of payoffs across strategies, allowing visual comparison of payoff distribution shapes.
+ggplot(df_merged, aes(x = payoff, color = strategy)) +
+  geom_density() +
+  labs(title = "Density Plot of Payoffs by Strategy", x = "Payoff", y = "Density") +
+  theme_minimal()
+
+# 5. Ridgeline Plot: Payoffs by Strategy
+# The ridgeline plot provides a layered view of payoff distributions by strategy, making it easier to compare their overall distributions.
+ggplot(df_merged, aes(x = payoff, y = strategy, fill = strategy)) +
+  geom_density_ridges(bandwidth = 1.75) +
+  labs(title = "Ridgeline Plot of Payoffs by Strategy", x = "Payoff", y = "Strategy") +
+  theme_minimal()
+
+# 6. Scatter Plot: Payoffs by Strategy
+# This scatter plot shows individual payoff points for each strategy, adding some noise with width to reveal overlapping data points.
+ggplot(df_merged, aes(x = strategy, y = payoff, color = strategy)) +
+  geom_jitter(width = 0.2) +
+  labs(title = "Scatter Plot of Payoffs by Strategy", x = "Strategy", y = "Payoff") +
+  theme_minimal()
+```

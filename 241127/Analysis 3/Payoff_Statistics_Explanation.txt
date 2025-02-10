@@ -1,0 +1,6 @@
+Payoff Statistics Explanation:
+This table summarizes the total payoffs across three strategy categories:
+1. 'Only TFT': Players who exclusively followed the Tit-for-Tat strategy throughout the game.
+2. 'TFTA Consistent': Players whose behavior was largely consistent with Tit-for-Tat.
+3. 'All Strategies': All other players, regardless of the strategies they followed.
+Metrics include mean, standard deviation, and range of total payoffs.
