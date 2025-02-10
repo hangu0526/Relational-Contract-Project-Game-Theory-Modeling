@@ -1,0 +1,219 @@
+---
+title: "TFT_241109_module3"
+author: "Hana Kwon, WB Macleod"
+date: "Nov 9, 2024"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+# **Extended Analysis**
+
+### Step 6: Frequency-Weighted Payoff Calculation
+
+-   **Objective:** This calculation weights each strategy’s average payoff by its frequency, providing a clearer view of strategy effectiveness.
+
+-   **Code Updates (Nov 1, 2024) =\> 2x2 Design**
+
+    ```{r}
+
+    # Calculate Frequency-Weighted Payoff 
+    weighted_payoff_summary <- strategy_payoff_summary %>%
+      group_by(strategy_label, horizon, pd_difficulty) %>%
+      mutate(weighted_avg_payoff = avg_strategy_payoff * (count / sum(count)))
+
+    # Visualization with 2x2 Design and adjusted text size
+    ggplot(weighted_payoff_summary, aes(x = strategy_label, y = weighted_avg_payoff, fill = strategy_label)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      facet_grid(pd_difficulty ~ horizon, scales = "free") +
+      labs(title = "Frequency-Weighted Average Payoff by Strategy, Horizon, and Difficulty",
+           x = "Strategy", y = "Weighted Average Payoff") +
+      theme_minimal() +
+      theme(
+        text = element_text(size = 10),  # Set overall text size
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 8),  # Rotate and resize x-axis labels
+        strip.text = element_text(size = 9),  # Decrease facet label size
+        plot.title = element_text(size = 12, face = "bold")  # Bold and adjust title size
+      )
+
+    ```
+
+------------------------------------------------------------------------
+
+### Step 7: Performance Against Non-Fixed Strategies
+
+-   **Objective:** This analysis compares each fixed strategy’s performance when interacting with non-fixed strategies, highlighting adaptability.
+
+<!-- -->
+
+-   **Code Updates (Nov 8, 2024)**
+
+#### 7.1. Approach 1. General Comparison Against Non-Fixed Strategies
+
+In this first approach, we calculate the average payoff of each strategy when competing against any non-fixed strategy. This provides an overall measure of performance without distinguishing specific opponent strategies.
+
+```{r}
+
+### Approach 1: Overall Performance Against Non-Fixed Strategies
+
+non_fixed_performance_general <- df_merged %>%
+  filter(strategy_label != "Always Cooperate" & strategy_label != "Always Defect") %>%
+  group_by(strategy_label) %>%
+  summarise(
+    avg_payoff_against_non_fixed = mean(payoff, na.rm = TRUE),
+    variance_against_non_fixed = var(payoff, na.rm = TRUE)
+  )
+
+# Print General Non-Fixed Performance Results
+print(non_fixed_performance_general)
+
+# Visualization for General Non-Fixed Strategy Performance
+ggplot(non_fixed_performance_general, aes(x = strategy_label, y = avg_payoff_against_non_fixed, fill = strategy_label)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Performance Against Non-Fixed Strategies (General)", x = "Strategy", y = "Average Payoff") +
+  theme_minimal()
+```
+
+#### **7.2. Approach 2:** Specific Comparison Against Each Non-Fixed Strategy
+
+In this second approach, we expand the analysis by considering each non-fixed strategy (e.g., Tit-for-Tat, Experimenters) separately. This allows us to see how each strategy performs against specific non-fixed strategies, offering a more granular view of strategy adaptability.
+
+```{r}
+
+non_fixed_performance_detailed <- df_merged %>%
+  filter(strategy_label %in% c("Tit for Tat", "Experimenters")) %>%
+  group_by(player_strategy = strategy_label, opponent_strategy = strategy_label) %>%
+  summarise(
+    avg_payoff_against_non_fixed = mean(payoff, na.rm = TRUE),
+    variance_against_non_fixed = var(payoff, na.rm = TRUE),
+    count = n(),
+    .groups = "drop"
+  )
+
+# Print Detailed Non-Fixed Performance Results
+print(non_fixed_performance_detailed)
+
+# Visualization for Detailed Non-Fixed Strategy Performance
+ggplot(non_fixed_performance_detailed, aes(x = player_strategy, y = avg_payoff_against_non_fixed, fill = opponent_strategy)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Performance Against Non-Fixed Strategies (Detailed)", x = "Player Strategy", y = "Average Payoff Against Non-Fixed") +
+  theme_minimal()
+```
+
+#### **7.3. Additional Analysis: Performance by Specific Opponent Strategy**
+
+This final analysis adds one more layer of specificity by grouping by both the player’s and opponent’s strategy. This allows us to see exactly how each non-fixed strategy (like Tit-for-Tat or Experimenters) performs against specific opponent strategies, rather than treating all non-fixed strategies as a single group.
+
+```{r}
+# Step 1: Add Opponent Strategy
+df_merged <- df_merged %>%
+  group_by(opponent_id, supergame) %>%
+  mutate(opponent_strategy = first(strategy_label)) %>%
+  ungroup()
+
+# Step 2: Performance Analysis by Specific Opponent Strategy
+non_fixed_performance_by_opponent <- df_merged %>%
+  filter(strategy_label %in% c("Tit for Tat", "Experimenters")) %>%
+  group_by(player_strategy = strategy_label, opponent_strategy) %>%
+  summarise(
+    avg_payoff_against_non_fixed = mean(payoff, na.rm = TRUE),
+    variance_against_non_fixed = var(payoff, na.rm = TRUE),
+    count = n(),
+    .groups = "drop"
+  )
+
+# Print Non-Fixed Performance by Specific Opponent Strategy
+print(non_fixed_performance_by_opponent)
+
+# Visualization for Performance by Specific Opponent Strategy
+ggplot(non_fixed_performance_by_opponent, aes(x = player_strategy, y = avg_payoff_against_non_fixed, fill = opponent_strategy)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Performance by Specific Opponent Strategy", x = "Player Strategy", y = "Average Payoff Against Specific Non-Fixed Strategies") +
+  theme_minimal()
+```
+
+------------------------------------------------------------------------
+
+### Step 8: Expected Payoff Simulation for Hypothetical Tit-for-Tat Player
+
+-   **Objective:** In this step, we estimate the expected payoff for a hypothetical Tit-for-Tat player when competing against various other strategies. This analysis provides insights into how a Tit-for-Tat strategy might perform on average against other identified strategies.
+
+-   **Code Updates (Nov 1, 2024) =\> 2x2 Design**
+
+    ```{r}
+
+
+    ### 8 Simulating Tit-for-Tat Performance
+
+    # Calculating Expected Payoff for Tit-for-Tat vs Opponent Strategies
+    hypothetical_tft_performance <- df_merged %>%
+      filter(strategy_label == "Tit for Tat") %>%
+      group_by(opponent_strategy = strategy_label, horizon, pd_difficulty) %>%
+      summarise(
+        avg_expected_payoff = mean(payoff, na.rm = TRUE),
+        variance_expected_payoff = var(payoff, na.rm = TRUE),
+        count = n(),
+        .groups = "drop"
+      )
+
+    # Visualization with 2x2 Design
+    ggplot(hypothetical_tft_performance, aes(x = opponent_strategy, y = avg_expected_payoff, fill = opponent_strategy)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      facet_grid(pd_difficulty ~ horizon) +
+      labs(title = "Expected Payoff for Tit-for-Tat Player by Game Type",
+           x = "Opponent Strategy", y = "Average Expected Payoff") +
+      theme_minimal()
+
+    ```
+
+------------------------------------------------------------------------
+
+### **Step** 9**:** Visualizations and Graphical Analysis
+
+-   **Objective:** Provides a visualization of strategy payoff distributions and strategy counts, offering a visual comparison of each strategy’s performance and popularity.
+-   **Code Updates (Nov 1, 2024)**
+
+```{r}
+
+### 9 Visualizations
+
+library(ggplot2)
+library(ggridges)
+
+# 1. Bar Plot: Average Payoff by Strategy
+ggplot(strategy_payoff_summary, aes(x = strategy_label, y = avg_strategy_payoff, fill = strategy_label)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Payoff by Strategy", x = "Strategy", y = "Average Payoff") +
+  theme_minimal()
+
+# 2. Box Plot: Payoff Distribution by Strategy
+ggplot(df_merged, aes(x = strategy_label, y = payoff, fill = strategy_label)) +
+  geom_boxplot() +
+  labs(title = "Payoff Distribution by Strategy", x = "Strategy", y = "Payoff") +
+  theme_minimal()
+
+# 3. Violin Plot: Density of Payoff by Strategy
+ggplot(df_merged, aes(x = strategy_label, y = payoff, fill = strategy_label)) +
+  geom_violin() +
+  labs(title = "Density of Payoff by Strategy", x = "Strategy", y = "Payoff") +
+  theme_minimal()
+
+# 4. Density Plot: Density of Payoffs by Strategy
+ggplot(df_merged, aes(x = payoff, color = strategy_label)) +
+  geom_density() +
+  labs(title = "Density Plot of Payoffs by Strategy", x = "Payoff", y = "Density") +
+  theme_minimal()
+
+# 5. Ridgeline Plot: Payoffs by Strategy
+ggplot(df_merged, aes(x = payoff, y = strategy_label, fill = strategy_label)) +
+  geom_density_ridges(bandwidth = 1.75) +
+  labs(title = "Ridgeline Plot of Payoffs by Strategy", x = "Payoff", y = "Strategy") +
+  theme_minimal()
+
+# 6. Scatter Plot: Payoffs by Strategy
+ggplot(df_merged, aes(x = strategy_label, y = payoff, color = strategy_label)) +
+  geom_jitter(width = 0.2) +
+  labs(title = "Scatter Plot of Payoffs by Strategy", x = "Strategy", y = "Payoff") +
+  theme_minimal()
+
+```

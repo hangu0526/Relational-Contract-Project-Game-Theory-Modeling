@@ -1,0 +1,73 @@
+---
+title: "TFT_241109_module1"
+author: "Hana Kwon, WB Macleod"
+date: "Nov 9, 2024"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+### 
+
+# **Data Preparation**
+
+### Step 1: Data Loading, Initial Exploration, and Preparation
+
+-   **Objective:** Load the dataset and examine its structure to ensure successful data import and check for any missing values.
+
+    ```{r}
+    ### 1.1 Load Necessary Libraries and Dataset
+    library(dplyr)
+    library(readr)
+    library(ggplot2)
+
+    file_data <- "/Users/hanakwon/Desktop/0_RA_McLeod_TFT/Embrey_2018a_new_data.txt"
+    data <- read.table(file_data, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+    ### 1.2 Initial Data Exploration
+    str(data)      # Check the structure of the data
+    summary(data)  # Summary of data to examine distributions and any NA values
+
+    ```
+
+------------------------------------------------------------------------
+
+### **Step 2:** Data Preparation, Preprocessing, and PD Difficulty Setting
+
+-   **Objective:** Prepare player and opponent data frames to align cooperation values and payoff values for each round. Classify games by PD difficulty (EasyPD or HardPD) based on payoff values.
+
+-   **Code Updates (Nov 1, 2024) =\> 2x2 Design**
+
+    ```{r}
+    ###Updated 
+    # Set normalized payoff values
+    data <- data %>%
+      mutate(
+        r = 1.0,              # Reward for mutual cooperation
+        s = -l,               # Sucker's payoff
+        t = 1.0 + g,          # Temptation payoff
+        p = 0.0               # Punishment for mutual defection
+      )
+
+    # Create player and opponent data frames
+    df_self <- data %>%
+      select(id, oid, supergame, round, horizon, coop, r, s, t, p) %>%
+      rename(player_id = id, opponent_id = oid, player_coop = coop)
+
+    df_opp <- data %>%
+      select(id, oid, supergame, round, horizon, coop) %>%
+      rename(opponent_id = id, player_id = oid, opponent_coop = coop)
+
+    # Merge player and opponent data
+    df_merged <- df_self %>%
+      left_join(df_opp, by = c("player_id", "opponent_id", "supergame", "round", "horizon"))
+
+
+    # Add PD difficulty column
+    df_merged <- df_merged %>%
+      mutate(pd_difficulty = case_when(
+        abs(t - 2) < 0.1 & abs(s + 1.41) < 0.1 ~ "EasyPD",
+        abs(t - 4) < 0.1 & abs(s + 2.8) < 0.1 ~ "HardPD",
+        TRUE ~ NA_character_
+      ))
+    ```
